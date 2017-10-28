@@ -93,7 +93,16 @@ private:
 
     qreal blockWidth(const QTextBlock &p_block) const;
 
+    // Update block count and m_blocks size.
     void updateDocumentSize();
+
+    QVector<QTextLayout::FormatRange> formatRangeFromSelection(const QTextBlock &p_block,
+                                                               const QVector<Selection> &p_selections) const;
+
+    // Get the block range [first, last] by rect @p_rect.
+    // @p_rect: a clip region in document coordinates. If null, returns all the blocks.
+    // Return [-1, -1] if no valid block range found.
+    void blockRangeFromRect(const QRectF &p_rect, int &p_first, int &p_last) const;
 
     // Available width of the page.
     qreal m_pageWidth;
@@ -112,6 +121,9 @@ private:
 
     // Block count of the document.
     int m_blockCount;
+
+    // Width of the cursor.
+    int m_cursorWidth;
 
     QVector<BlockInfo> m_blocks;
 };
