@@ -96,8 +96,6 @@ private:
 
     int previousValidBlockNumber(int p_number) const;
 
-    qreal blockWidth(const QTextBlock &p_block) const;
-
     // Update block count and m_blocks size.
     void updateDocumentSize();
 
@@ -112,6 +110,13 @@ private:
     // Return a rect from the layout.
     // Return a null rect if @p_block has not been layouted.
     QRectF blockRectFromTextLayout(const QTextBlock &p_block);
+
+    // Return the width of the block regarding to document.
+    inline qreal blockWidthInDocument(int p_width) const;
+
+    // Update document size when only block @p_blockNumber is changed and the height
+    // remain the same.
+    void updateDocumentSizeWithOneBlockChanged(int p_blockNumber);
 
     // Available width of the page.
     qreal m_pageWidth;
@@ -140,6 +145,11 @@ private:
 inline void VTextDocumentLayout::setPageWidth(int p_width)
 {
     m_pageWidth = m_width = p_width;
+}
+
+inline qreal VTextDocumentLayout::blockWidthInDocument(int p_width) const
+{
+    return p_width + 10;
 }
 
 #endif // VTEXTDOCUMENTLAYOUT_H

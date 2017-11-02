@@ -277,7 +277,9 @@ void VTextDocumentLayout::documentChanged(int p_from, int p_charsRemoved, int p_
             QRectF newBr = blockBoundingRect(block);
             // Only one block is affected.
             if (newBr.height() == oldBr.height()) {
-                updateDocumentSize();
+                // Update document size.
+                updateDocumentSizeWithOneBlockChanged(block.blockNumber());
+
                 emit updateBlock(block);
                 return;
             }
@@ -481,11 +483,14 @@ void VTextDocumentLayout::updateDocumentSize()
         for (int i = 0; i < m_blocks.size(); ++i) {
             const BlockInfo &info = m_blocks[i];
             Q_ASSERT(info.hasOffset());
-            m_width = qMax(m_width, info.m_rect.width());
+            if (m_width < info.m_rect.width()) {
+                m_width = info.m_rect.width();
+                m_maximumWidthBlockNumber = i;
+            }
         }
 
         // Allow the cursor to be displayed.
-        m_width += 10;
+        m_width = blockWidthInDocument(m_width);
 
         if (oldHeight != m_height
             || oldWidth != m_width) {
@@ -524,4 +529,18 @@ QRectF VTextDocumentLayout::blockRectFromTextLayout(const QTextBlock &p_block)
     }
 
     return br;
+}
+
+void VTextDocumentLayout::updateDocumentSizeWithOneBlockChanged(int p_blockNumber)
+{
+    const BlockInfo &info = m_blocks[p_blockNumber];
+    qreal width = blockWidthInDocument(info.m_rect.width());
+    if (width > m_width) {
+        m_width = width;
+        m_maximumWidthBlockNumber = p_blockNumber;
+        emit documentSizeChanged(documentSize());
+    } else if (width < m_width && p_blockNumber == m_maximumWidthBlockNumber) {
+        // Shrink the longest block.
+        updateDocumentSize();
+    }
 }
