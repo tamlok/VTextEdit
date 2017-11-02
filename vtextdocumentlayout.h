@@ -28,42 +28,49 @@ public:
     int cursorWidth() const;
 
 protected:
-    void documentChanged(int p_from, int p_oldLength, int p_length) Q_DECL_OVERRIDE;
+    void documentChanged(int p_from, int p_charsRemoved, int p_charsAdded) Q_DECL_OVERRIDE;
 
 private:
     struct BlockInfo
     {
         BlockInfo()
-            : m_valid(true),
-              m_offset(-1),
-              m_rect(QRectF())
         {
+            reset();
         }
 
         void reset()
         {
-            m_valid = true;
             m_offset = -1;
             m_rect = QRectF();
         }
 
-        // Whether this block is valid and visible.
-        bool m_valid;
+        bool hasOffset() const
+        {
+            return m_offset > -1 && !m_rect.isNull();
+        }
 
-        // The offset Y of this block.
+        qreal top() const
+        {
+            Q_ASSERT(hasOffset());
+            return m_offset;
+        }
+
+        qreal bottom() const
+        {
+            Q_ASSERT(hasOffset());
+            return m_offset + m_rect.height();
+        }
+
+        // Y offset of this block.
         // -1 for invalid.
         qreal m_offset;
 
-        // The bounding rect of the content.
-        // Including the right/bottom margin.
+        // The bounding rect of this block, including the margins.
         // Null for invalid.
         QRectF m_rect;
     };
 
     void layoutBlock(const QTextBlock &p_block);
-
-    // Returns the content width of the longest line within @p_block.
-    qreal blockWidth(const QTextBlock &p_block);
 
     // Clear the layout of @p_block.
     // Also clear all the offset behind this block.
@@ -75,7 +82,10 @@ private:
     // Fill the offset filed from @p_blockNumber + 1.
     void fillOffsetFrom(int p_blockNumber);
 
-    void updateBlockCount(int p_count);
+    // Update block count to @p_count due to document change.
+    // Maintain m_blocks.
+    // @p_changeStartBlock is the block number of the start block in this change.
+    void updateBlockCount(int p_count, int p_changeStartBlock);
 
     bool validateBlocks() const;
 
@@ -84,11 +94,6 @@ private:
 
     void finishBlockLayout(const QTextBlock &p_block);
 
-    // Find next block that is valid and visible.
-    int nextValidBlockNumber(int p_number) const;
-
-    // Find previous block that is valid and visible.
-    // @p_number block has valid offset.
     int previousValidBlockNumber(int p_number) const;
 
     qreal blockWidth(const QTextBlock &p_block) const;
@@ -103,6 +108,10 @@ private:
     // @p_rect: a clip region in document coordinates. If null, returns all the blocks.
     // Return [-1, -1] if no valid block range found.
     void blockRangeFromRect(const QRectF &p_rect, int &p_first, int &p_last) const;
+
+    // Return a rect from the layout.
+    // Return a null rect if @p_block has not been layouted.
+    QRectF blockRectFromTextLayout(const QTextBlock &p_block);
 
     // Available width of the page.
     qreal m_pageWidth;

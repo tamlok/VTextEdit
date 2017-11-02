@@ -42,7 +42,7 @@ void MainWindow::writeTestText()
 
     cursor.insertText("Test a layout.");
 
-    // cursor.insertBlock();
+    cursor.insertBlock();
 
     QString text = "1234567890\n"
                    "2234567890\n"
@@ -54,5 +54,5 @@ void MainWindow::writeTestText()
                    "8234567890\n"
                    "9234567890\n";
 
-    // cursor.insertText(text);
+    cursor.insertText(text);
 }
