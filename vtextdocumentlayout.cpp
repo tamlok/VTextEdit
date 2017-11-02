@@ -95,13 +95,89 @@ void VTextDocumentLayout::blockRangeFromRect(const QRectF &p_rect,
     qDebug() << "block range" << p_first << p_last;
 }
 
+void VTextDocumentLayout::blockRangeFromRectBS(const QRectF &p_rect,
+                                               int &p_first,
+                                               int &p_last) const
+{
+    if (p_rect.isNull()) {
+        p_first = 0;
+        p_last = m_blocks.size() - 1;
+        return;
+    }
+
+    Q_ASSERT(document()->blockCount() == m_blocks.size());
+
+    p_first = findBlockByPosition(p_rect.topLeft());
+
+    if (p_first == -1) {
+        p_last = -1;
+        return;
+    }
+
+    int y = p_rect.bottom();
+    QTextBlock block = document()->findBlockByNumber(p_first);
+
+    if (m_blocks[p_first].top() == p_rect.top()
+        && p_first > 0) {
+        --p_first;
+    }
+
+    p_last = m_blocks.size() - 1;
+    while (block.isValid()) {
+        const BlockInfo &info = m_blocks[block.blockNumber()];
+        Q_ASSERT(info.hasOffset());
+
+        if (info.bottom() > y) {
+            p_last = block.blockNumber();
+            break;
+        }
+
+        block = block.next();
+    }
+
+    qDebug() << "block range" << p_first << p_last;
+
+}
+
+int VTextDocumentLayout::findBlockByPosition(const QPointF &p_point) const
+{
+    int first = 0, last = m_blocks.size() - 1;
+    int y = p_point.y();
+    while (first <= last) {
+        int mid = (first + last) / 2;
+        const BlockInfo &info = m_blocks[mid];
+        Q_ASSERT(info.hasOffset());
+        if (info.top() <= y && info.bottom() > y) {
+            // Found it.
+            return mid;
+        } else if (info.top() > y) {
+            last = mid - 1;
+        } else {
+            first = mid + 1;
+        }
+    }
+
+    int idx = previousValidBlockNumber(m_blocks.size());
+    if (y >= m_blocks[idx].bottom()) {
+        return idx;
+    }
+
+    idx = nextValidBlockNumber(-1);
+    if (y < m_blocks[idx].top()) {
+        return idx;
+    }
+
+    Q_ASSERT(false);
+    return -1;
+}
+
 void VTextDocumentLayout::draw(QPainter *p_painter, const PaintContext &p_context)
 {
     qDebug() << "VTextDocumentLayout draw()" << p_context.clip << p_context.cursorPosition << p_context.selections.size();
 
     // Find out the blocks.
     int first, last;
-    blockRangeFromRect(p_context.clip, first, last);
+    blockRangeFromRectBS(p_context.clip, first, last);
     if (first == -1) {
         return;
     }
@@ -216,8 +292,31 @@ QVector<QTextLayout::FormatRange> VTextDocumentLayout::formatRangeFromSelection(
 
 int VTextDocumentLayout::hitTest(const QPointF &p_point, Qt::HitTestAccuracy p_accuracy) const
 {
-    qDebug() << "VTextDocumentLayout hitTest()" << p_point;
-    return -1;
+    Q_UNUSED(p_accuracy);
+    int bn = findBlockByPosition(p_point);
+    if (bn == -1) {
+        return -1;
+    }
+
+    QTextBlock block = document()->findBlockByNumber(bn);
+    Q_ASSERT(block.isValid());
+    QTextLayout *layout = block.layout();
+    int off = 0;
+    QPointF pos = p_point - QPointF(m_margin, m_blocks[bn].top());
+    for (int i = 0; i < layout->lineCount(); ++i) {
+        QTextLine line = layout->lineAt(i);
+        const QRectF lr = line.naturalTextRect();
+        if (lr.top() > pos.y()) {
+            off = qMin(off, line.textStart());
+        } else if (lr.bottom() <= pos.y()) {
+            off = qMax(off, line.textStart() + line.textLength());
+        } else {
+            off = line.xToCursor(pos.x(), QTextLine::CursorBetweenCharacters);
+            break;
+        }
+    }
+
+    return block.position() + off;
 }
 
 int VTextDocumentLayout::pageCount() const
@@ -466,6 +565,17 @@ void VTextDocumentLayout::finishBlockLayout(const QTextBlock &p_block)
 int VTextDocumentLayout::previousValidBlockNumber(int p_number) const
 {
     return p_number >= 0 ? p_number - 1 : -1;
+}
+
+int VTextDocumentLayout::nextValidBlockNumber(int p_number) const
+{
+    if (p_number <= -1) {
+        return 0;
+    } else if (p_number >= m_blocks.size() - 1) {
+        return -1;
+    } else {
+        return p_number + 1;
+    }
 }
 
 void VTextDocumentLayout::updateDocumentSize()

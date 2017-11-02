@@ -96,6 +96,8 @@ private:
 
     int previousValidBlockNumber(int p_number) const;
 
+    int nextValidBlockNumber(int p_number) const;
+
     // Update block count and m_blocks size.
     void updateDocumentSize();
 
@@ -106,6 +108,13 @@ private:
     // @p_rect: a clip region in document coordinates. If null, returns all the blocks.
     // Return [-1, -1] if no valid block range found.
     void blockRangeFromRect(const QRectF &p_rect, int &p_first, int &p_last) const;
+
+    // Binary search to get the block range [first, last] by @p_rect.
+    void blockRangeFromRectBS(const QRectF &p_rect, int &p_first, int &p_last) const;
+
+    // Return the block number which contains point @p_point.
+    // If @p_point is at the border, returns the block below.
+    int findBlockByPosition(const QPointF &p_point) const;
 
     // Return a rect from the layout.
     // Return a null rect if @p_block has not been layouted.
