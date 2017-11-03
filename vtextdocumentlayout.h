@@ -3,13 +3,18 @@
 
 #include <QAbstractTextDocumentLayout>
 #include <QVector>
+#include <QSize>
+
+class VImageResourceManager2;
+struct VBlockImageInfo2;
+
 
 class VTextDocumentLayout : public QAbstractTextDocumentLayout
 {
     Q_OBJECT
-
 public:
-    explicit VTextDocumentLayout(QTextDocument *p_doc);
+    VTextDocumentLayout(QTextDocument *p_doc,
+                        VImageResourceManager2 *p_imageMgr);
 
     void draw(QPainter *p_painter, const PaintContext &p_context) Q_DECL_OVERRIDE;
 
@@ -26,6 +31,18 @@ public:
     void setCursorWidth(int p_width);
 
     int cursorWidth() const;
+
+    void setLineLeading(qreal p_leading);
+
+    qreal getLineLeading() const;
+
+    // Return the block number which contains point @p_point.
+    // If @p_point is at the border, returns the block below.
+    int findBlockByPosition(const QPointF &p_point) const;
+
+    void setImageWidthConstrainted(bool p_enabled);
+
+    void setBlockImageEnabled(bool p_enabled);
 
 protected:
     void documentChanged(int p_from, int p_charsRemoved, int p_charsAdded) Q_DECL_OVERRIDE;
@@ -89,9 +106,6 @@ private:
 
     bool validateBlocks() const;
 
-    // Set the width of the page.
-    void setPageWidth(int p_width);
-
     void finishBlockLayout(const QTextBlock &p_block);
 
     int previousValidBlockNumber(int p_number) const;
@@ -112,23 +126,24 @@ private:
     // Binary search to get the block range [first, last] by @p_rect.
     void blockRangeFromRectBS(const QRectF &p_rect, int &p_first, int &p_last) const;
 
-    // Return the block number which contains point @p_point.
-    // If @p_point is at the border, returns the block below.
-    int findBlockByPosition(const QPointF &p_point) const;
-
     // Return a rect from the layout.
     // Return a null rect if @p_block has not been layouted.
     QRectF blockRectFromTextLayout(const QTextBlock &p_block);
-
-    // Return the width of the block regarding to document.
-    inline qreal blockWidthInDocument(int p_width) const;
 
     // Update document size when only block @p_blockNumber is changed and the height
     // remain the same.
     void updateDocumentSizeWithOneBlockChanged(int p_blockNumber);
 
-    // Available width of the page.
-    qreal m_pageWidth;
+    void adjustImagePaddingAndSize(const VBlockImageInfo2 *p_info,
+                                   int p_maximumWidth,
+                                   int &p_padding,
+                                   QSize &p_size) const;
+
+    // Draw images of block @p_block.
+    // @p_offset: the offset for the drawing of the block.
+    void drawBlockImage(QPainter *p_painter,
+                        const QTextBlock &p_block,
+                        const QPointF &p_offset);
 
     // Document margin on left/right/bottom.
     qreal m_margin;
@@ -142,23 +157,31 @@ private:
     // Height of all the document (all the blocks).
     qreal m_height;
 
+    // Set the leading space of a line.
+    qreal m_lineLeading;
+
     // Block count of the document.
     int m_blockCount;
 
     // Width of the cursor.
     int m_cursorWidth;
 
+    // Right margin for cursor.
+    qreal m_cursorMargin;
+
     QVector<BlockInfo> m_blocks;
+
+    VImageResourceManager2 *m_imageMgr;
+
+    bool m_blockImageEnabled;
+
+    // Whether constraint the width of image to the width of the page.
+    bool m_imageWidthConstrainted;
 };
 
-inline void VTextDocumentLayout::setPageWidth(int p_width)
+inline qreal VTextDocumentLayout::getLineLeading() const
 {
-    m_pageWidth = m_width = p_width;
-}
-
-inline qreal VTextDocumentLayout::blockWidthInDocument(int p_width) const
-{
-    return p_width + 10;
+    return m_lineLeading;
 }
 
 #endif // VTEXTDOCUMENTLAYOUT_H

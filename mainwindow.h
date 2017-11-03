@@ -3,7 +3,7 @@
 
 #include <QMainWindow>
 
-class QTextEdit;
+class VTextEdit;
 
 class MainWindow : public QMainWindow
 {
@@ -18,7 +18,7 @@ private:
 
     void writeTestText();
 
-    QTextEdit *m_edit;
+    VTextEdit *m_edit;
 };
 
 #endif // MAINWINDOW_H

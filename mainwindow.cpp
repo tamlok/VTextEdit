@@ -3,6 +3,7 @@
 #include <QtWidgets>
 
 #include "vtextdocumentlayout.h"
+#include "vtextedit.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -19,10 +20,15 @@ MainWindow::~MainWindow()
 
 void MainWindow::setupUI()
 {
-    m_edit = new QTextEdit();
-    VTextDocumentLayout *docLayout = new VTextDocumentLayout(m_edit->document());
-    m_edit->document()->setDocumentLayout(docLayout);
-    m_edit->setReadOnly(false);
+    m_edit = new VTextEdit();
+
+    m_edit->setLineLeading(3);
+
+    m_edit->setLineNumberType(LineNumberType::Relative);
+
+    m_edit->setBlockImageEnabled(true);
+
+    m_edit->setImageWidthConstrainted(true);
 
     setCentralWidget(m_edit);
 }

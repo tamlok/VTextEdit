@@ -26,8 +26,14 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES += \
         main.cpp \
         mainwindow.cpp \
-    vtextdocumentlayout.cpp
+    vtextdocumentlayout.cpp \
+    vtextedit.cpp \
+    vlinenumberarea.cpp \
+    vimageresourcemanager2.cpp
 
 HEADERS += \
         mainwindow.h \
-    vtextdocumentlayout.h
+    vtextdocumentlayout.h \
+    vtextedit.h \
+    vlinenumberarea.h \
+    vimageresourcemanager2.h

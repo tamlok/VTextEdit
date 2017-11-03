@@ -10,16 +10,24 @@
 #include <QPainter>
 #include <QDebug>
 
+#include "vimageresourcemanager2.h"
+#include "vtextedit.h"
 
-VTextDocumentLayout::VTextDocumentLayout(QTextDocument *p_doc)
+
+VTextDocumentLayout::VTextDocumentLayout(QTextDocument *p_doc,
+                                         VImageResourceManager2 *p_imageMgr)
     : QAbstractTextDocumentLayout(p_doc),
-      m_pageWidth(0),
       m_margin(p_doc->documentMargin()),
       m_width(0),
       m_maximumWidthBlockNumber(-1),
       m_height(0),
+      m_lineLeading(0),
       m_blockCount(0),
-      m_cursorWidth(1)
+      m_cursorWidth(1),
+      m_cursorMargin(4),
+      m_imageMgr(p_imageMgr),
+      m_blockImageEnabled(false),
+      m_imageWidthConstrainted(false)
 {
 }
 
@@ -221,6 +229,8 @@ void VTextDocumentLayout::draw(QPainter *p_painter, const PaintContext &p_contex
                      selections,
                      p_context.clip.isValid() ? p_context.clip : QRectF());
 
+        drawBlockImage(p_painter, block, offset);
+
         // Draw the cursor.
         int blpos = block.position();
         int bllen = block.length();
@@ -332,7 +342,8 @@ QSizeF VTextDocumentLayout::documentSize() const
 QRectF VTextDocumentLayout::frameBoundingRect(QTextFrame *p_frame) const
 {
     Q_UNUSED(p_frame);
-    return QRectF(0, 0, qMax(m_pageWidth, m_width), qreal(INT_MAX));
+    return QRectF(0, 0,
+                  qMax(document()->pageSize().width(), m_width), qreal(INT_MAX));
 }
 
 QRectF VTextDocumentLayout::blockBoundingRect(const QTextBlock &p_block) const
@@ -343,7 +354,7 @@ QRectF VTextDocumentLayout::blockBoundingRect(const QTextBlock &p_block) const
 
     const BlockInfo &info = m_blocks[p_block.blockNumber()];
     QRectF geo = info.m_rect.adjusted(0, info.m_offset, 0, info.m_offset);
-    qDebug() << "blockBoundingRect()" << p_block.blockNumber() << p_block.text()
+    qDebug() << "blockBoundingRect()" << p_block.blockNumber()
              << info.m_offset << info.m_rect << geo;
     Q_ASSERT(info.hasOffset());
 
@@ -496,6 +507,7 @@ void VTextDocumentLayout::updateBlockCount(int p_count, int p_changeStartBlock)
 void VTextDocumentLayout::layoutBlock(const QTextBlock &p_block)
 {
     QTextDocument *doc = document();
+    Q_ASSERT(m_margin == doc->documentMargin());
 
     // The height (y) of the next line.
     qreal height = 0;
@@ -509,12 +521,12 @@ void VTextDocumentLayout::layoutBlock(const QTextBlock &p_block)
         extraMargin += fm.width(QChar(0x21B5));
     }
 
-    qreal availableWidth = m_pageWidth;
+    qreal availableWidth = doc->pageSize().width();
     if (availableWidth <= 0) {
         availableWidth = qreal(INT_MAX);
     }
 
-    availableWidth -= 2 * m_margin + extraMargin;
+    availableWidth -= (2 * m_margin + extraMargin + m_cursorMargin);
 
     tl->beginLayout();
 
@@ -526,6 +538,7 @@ void VTextDocumentLayout::layoutBlock(const QTextBlock &p_block)
 
         line.setLeadingIncluded(true);
         line.setLineWidth(availableWidth);
+        height += m_lineLeading;
         line.setPosition(QPointF(m_margin, height));
         height += line.height();
     }
@@ -599,9 +612,6 @@ void VTextDocumentLayout::updateDocumentSize()
             }
         }
 
-        // Allow the cursor to be displayed.
-        m_width = blockWidthInDocument(m_width);
-
         if (oldHeight != m_height
             || oldWidth != m_width) {
             emit documentSizeChanged(documentSize());
@@ -626,14 +636,31 @@ QRectF VTextDocumentLayout::blockRectFromTextLayout(const QTextBlock &p_block)
         return QRectF();
     }
 
-    QRectF br(QPointF(0, 0), tl->boundingRect().bottomRight());
+    QRectF tlRect = tl->boundingRect();
+    QRectF br(QPointF(0, 0), tlRect.bottomRight());
 
-    // Not know why. Copied from QPlainTextDocumentLayout.
+    // Do not know why. Copied from QPlainTextDocumentLayout.
     if (tl->lineCount() == 1) {
         br.setWidth(qMax(br.width(), tl->lineAt(0).naturalTextWidth()));
     }
 
-    br.adjust(0, 0, m_margin, 0);
+    // Handle block image.
+    if (m_blockImageEnabled) {
+        const VBlockImageInfo2 *info = m_imageMgr->findImageInfoByBlock(p_block.blockNumber());
+        if (info && !info->m_imageSize.isNull()) {
+            int maximumWidth = tlRect.width();
+            int padding;
+            QSize size;
+            adjustImagePaddingAndSize(info, maximumWidth, padding, size);
+            int dw = padding + size.width() + m_margin - br.width();
+            int dh = size.height() + m_lineLeading;
+            br.adjust(0, 0, dw > 0 ? dw : 0, dh);
+        }
+    }
+
+    br.adjust(0, 0, m_margin + m_cursorMargin, 0);
+
+    // Add bottom margin.
     if (!p_block.next().isValid()) {
         br.adjust(0, 0, 0, m_margin);
     }
@@ -644,7 +671,7 @@ QRectF VTextDocumentLayout::blockRectFromTextLayout(const QTextBlock &p_block)
 void VTextDocumentLayout::updateDocumentSizeWithOneBlockChanged(int p_blockNumber)
 {
     const BlockInfo &info = m_blocks[p_blockNumber];
-    qreal width = blockWidthInDocument(info.m_rect.width());
+    qreal width = info.m_rect.width();
     if (width > m_width) {
         m_width = width;
         m_maximumWidthBlockNumber = p_blockNumber;
@@ -653,4 +680,79 @@ void VTextDocumentLayout::updateDocumentSizeWithOneBlockChanged(int p_blockNumbe
         // Shrink the longest block.
         updateDocumentSize();
     }
+}
+
+void VTextDocumentLayout::setLineLeading(qreal p_leading)
+{
+    if (p_leading >= 0) {
+        m_lineLeading = p_leading;
+    }
+}
+
+void VTextDocumentLayout::setImageWidthConstrainted(bool p_enabled)
+{
+    m_imageWidthConstrainted = p_enabled;
+}
+
+void VTextDocumentLayout::setBlockImageEnabled(bool p_enabled)
+{
+    m_blockImageEnabled = p_enabled;
+}
+
+void VTextDocumentLayout::adjustImagePaddingAndSize(const VBlockImageInfo2 *p_info,
+                                                    int p_maximumWidth,
+                                                    int &p_padding,
+                                                    QSize &p_size) const
+{
+    const int minimumImageWidth = 400;
+
+    p_padding = p_info->m_padding;
+    p_size = p_info->m_imageSize;
+
+    if (!m_imageWidthConstrainted) {
+        return;
+    }
+
+    int availableWidth = p_maximumWidth - p_info->m_padding;
+    if (availableWidth < p_info->m_imageSize.width()) {
+        // Need to resize the width.
+        if (availableWidth >= minimumImageWidth) {
+            p_size.scale(availableWidth, p_size.height(), Qt::KeepAspectRatio);
+        } else {
+            // Omit the padding.
+            p_padding = 0;
+            p_size.scale(p_maximumWidth, p_size.height(), Qt::KeepAspectRatio);
+        }
+    }
+}
+
+void VTextDocumentLayout::drawBlockImage(QPainter *p_painter,
+                                         const QTextBlock &p_block,
+                                         const QPointF &p_offset)
+{
+    if (!m_blockImageEnabled) {
+        return;
+    }
+
+    const VBlockImageInfo2 *info = m_imageMgr->findImageInfoByBlock(p_block.blockNumber());
+    if (!info || info->m_imageSize.isNull()) {
+        return;
+    }
+
+    const QPixmap *image = m_imageMgr->findImage(info->m_imageName);
+    Q_ASSERT(image);
+
+    // Draw block image.
+    QTextLayout *tl = p_block.layout();
+    QRectF tlRect = tl->boundingRect();
+    int maximumWidth = tlRect.width();
+    int padding;
+    QSize size;
+    adjustImagePaddingAndSize(info, maximumWidth, padding, size);
+    QRect targetRect(p_offset.x() + padding,
+                     p_offset.y() + tlRect.height() + m_lineLeading,
+                     size.width(),
+                     size.height());
+
+    p_painter->drawPixmap(targetRect, *image);
 }
